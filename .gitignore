@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets / local config — NEVER commit (Databricks tokens, API keys)
+.env
+.env.*
+*.env
+.databrickscfg
+secrets/
+*.key
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Notebook / data scratch
+*.ipynb_checkpoints/
+scratch/
+out/

@@ -1,0 +1,29 @@
+# External-system references. The Agent treats GeneralLedgerGenerator as an
+# opaque upstream product and depends ONLY on the signals named here.
+# No code paths reach into the Generator's internals.
+
+generator:
+  # Databricks Job that runs the Financial Close Pipeline (workflow/create_job.py:22).
+  job_name: "Financial Close Pipeline"
+  catalog: fin_close
+  bronze_schema: bronze
+  gold_schema: gold
+
+agent:
+  # The Agent's OWN namespace. It writes here and nowhere else.
+  catalog: fin_close
+  schema: agent
+  triage_table: triage_log        # append-only audit trail (fin_close.agent.triage_log)
+
+signals:
+  # Read-only. The row the Generator's `remediate` task appends on EVERY dq_gate
+  # task failure. Its arrival is the Agent's activation trigger (Round-3 Q8).
+  failure_log_table: fin_close.gold.remediation_log
+
+  # OFF-LIMITS. This is the answer key (DESIGN §4/§5, guardrail #4). The Agent
+  # must NEVER read it during investigation. Listed here only so the path is
+  # explicit and guarded, not so it can be opened.
+  answer_key_glob: "/Volumes/fin_close/bronze/landing/{scenario}/_qa/run_manifest.json"
+
+databricks:
+  auth_profile: fin_close          # least-privilege identity to be split out later

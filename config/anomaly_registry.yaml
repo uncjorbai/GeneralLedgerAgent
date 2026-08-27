@@ -1,0 +1,63 @@
+# Anomaly registry — the Agent's "list of known outcomes".
+#
+# One entry per DQ/reconciliation check. Check names mirror
+# GeneralLedgerGenerator/notebooks/dq_gate.py VERBATIM, so a failing-check name
+# parsed from the pipeline's output resolves directly to an entry here.
+#
+# This is the single source of truth for "is this failure a deterministic data
+# defect the Agent should investigate?". New anomaly classes are added as new
+# rows here (config, not code) — this is the extension point for the growing
+# knowledge base. Phase 3 will hang remediation actions off these same entries.
+#
+# Fields:
+#   gate          dq_gate | reconciliation   (which suite the check belongs to)
+#   defect_class  the named scenario this check catches (DESIGN.md §6)
+#   deterministic true for every data-defect check (all 7 are, by construction)
+#   fails_task    does tripping this check FAIL the Databricks task today?
+#                 dq_gate checks raise -> task fails -> Agent is woken.
+#                 reconciliation checks only print -> task succeeds -> the Agent
+#                 is NOT woken yet. See DESIGN Tier-D / PIPELINE_CONTRACT.md.
+
+checks:
+  debits_equal_credits:
+    gate: dq_gate
+    defect_class: unbalanced_voucher
+    deterministic: true
+    fails_task: true
+
+  no_duplicate_vouchers:
+    gate: dq_gate
+    defect_class: duplicate_voucher
+    deterministic: true
+    fails_task: true
+
+  account_in_coa:
+    gate: dq_gate
+    defect_class: unmapped_account
+    deterministic: true
+    fails_task: true
+
+  required_dimensions_present:
+    gate: dq_gate
+    defect_class: missing_department
+    deterministic: true
+    fails_task: true
+
+  entity_and_period_present:
+    gate: dq_gate
+    defect_class: missing_entity_or_period
+    deterministic: true
+    fails_task: true
+
+  # --- reconciliation checks: known, but NOT task-failing today (Phase 2 / Tier D) ---
+  period_cutoff_correct:
+    gate: reconciliation
+    defect_class: period_cutoff
+    deterministic: true
+    fails_task: false
+
+  intercompany_eliminates:
+    gate: reconciliation
+    defect_class: intercompany_out_of_balance
+    deterministic: true
+    fails_task: false
