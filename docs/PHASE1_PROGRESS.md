@@ -4,7 +4,9 @@ Living status doc for the Phase-1 build. Read this first when resuming.
 Companion to `docs/PHASE1_PLAN.md` (the plan of record) — this tracks *where we
 actually are* and hands off the next step.
 
-_Last updated: after Step 5 (`verdict.py`)._
+_Last updated: after Step 8 skeleton — **Phase 1 logic is complete and runs
+end-to-end locally.** Only the live-Databricks tail (write, E2E, job+trigger)
+remains, and it is fenced off below for a cluster session._
 
 ---
 
@@ -17,9 +19,9 @@ _Last updated: after Step 5 (`verdict.py`)._
 | 3 | `config/anomaly_registry.yaml` | ✅ done | 7 checks |
 | 4 | `agent/registry.py` + tests | ✅ done | 13 tests |
 | 5 | `agent/verdict.py` + tests | ✅ done | 12 tests; parser quarantined |
-| **6** | **`agent/triage.py` + tests** | **⬅ NEXT** | pure Python; design decided below |
-| 7 | `agent/audit.py` | ⬜ todo | record-model = local; the Delta write = needs Databricks |
-| 8 | `agent/entrypoint.py` (+ notebook wrapper) | ⬜ todo | skeleton local; live path needs Databricks |
+| 6 | `agent/triage.py` + tests | ✅ done | 7 tests; escalate-wins locked |
+| 7 | `agent/audit.py` (to_row + dry-run) + tests | ✅ local done | Delta `write_delta()` = marked stub (cluster) |
+| 8 | `agent/entrypoint.py` + tests | ✅ skeleton done | CLI dry-run works E2E; notebook wrapper = cluster |
 | 9 | Manual end-to-end | ⛔ blocked | needs cluster + a reseeded failing run |
 | 10 | `workflow/create_agent_job.py` (job + trigger) | ⛔ blocked | needs workspace |
 
@@ -30,8 +32,20 @@ _Last updated: after Step 5 (`verdict.py`)._
 
 ```bash
 pip install -r requirements-dev.txt   # one-time (pytest + pyyaml)
-python -m pytest -q                    # 25 tests, ~0.2s, no network
+python -m pytest -q                    # 39 tests, ~0.2s, no network
 ```
+
+Run the whole Phase-1 agent locally (dry-run — writes to gitignored `out/`):
+
+```bash
+python -m agent.entrypoint \
+  --run-output tests/fixtures/failed_run_output.json \
+  --scenario unbalanced_voucher \
+  --generator-run-id 123456789 \
+  --gl-table gl_journal_lines__unbalanced_voucher
+```
+
+Prints the triage summary and appends the audit row to `out/triage_log.jsonl`.
 
 Environment as of this writing: Python 3.12, `pytest` + `pyyaml` installed.
 `databricks-sdk` is **declared** in `requirements.txt` but **not installed** — the
@@ -56,53 +70,60 @@ live path imports it lazily, so local tests don't need it.
 - `Verdict` (frozen): `.failed_checks: frozenset[str]`, `.parsed: bool`, `.evidence: str`
   - **`parsed` is the key field:** `True` ⇒ we recovered a structured failing-check list (deterministic); `False` ⇒ no marker (infra crash ⇒ transient).
 
+### `agent/triage.py`
+- `triage(verdict, registry, *, scenario, generator_run_id, gl_table) -> TriageResult` — **pure**; no clock/network/env.
+- Decision constants (import these; don't hardcode strings): `FAILURE_DETERMINISTIC/TRANSIENT/UNKNOWN`, `DECISION_ROUTE/LEAVE/ESCALATE`.
+- `TriageResult` (frozen): `.failure_class .triage_decision .failed_checks .unknown_checks .gate_types .rationale .evidence` + passthrough `.scenario .generator_run_id .gl_table`.
+- **Locked predicate** (escalate-wins precedence):
+  1. `not verdict.parsed` ⇒ transient ⇒ leave_to_existing_path.
+  2. any failing check unknown to registry ⇒ unknown ⇒ escalate (**wins over routing**).
+  3. all known and ≥1 has `deterministic and fails_task` ⇒ deterministic ⇒ route_to_agent.
+     (Routing keys on `fails_task`, NOT gate — so a Tier-D reconciliation check made task-failing routes without editing triage.)
+  4. all known but none task-failing (edge; shouldn't happen today) ⇒ unknown ⇒ escalate.
+- Does NOT set `agent_run_id`, `detected_at`, `signal_source` — those are step 7/8.
+
+### `agent/audit.py`
+- `to_row(result, *, agent_run_id, detected_at, signal_source) -> dict` — pure map to the `triage_log` schema. Arrays are lists; `detected_at` datetime → ISO string; `rationale` **is** populated.
+- `write_dry_run(row, path) -> Path` — append one JSON line locally (no Databricks).
+- `write_delta(row, *, catalog, schema, table, spark=None)` — **marked stub** (`NotImplementedError`); intended DDL/impl in its docstring. CLUSTER-ONLY.
+- `SIGNAL_JOBS_API = "jobs_api"`.
+
+### `agent/entrypoint.py`
+- `investigate(*, run_output, scenario, generator_run_id, gl_table, agent_run_id=None, now=None) -> (TriageResult, row)` — the orchestration; `agent_run_id`/`now` injectable for tests. `run_output` is a dict with `error`/`error_trace`.
+- `main(argv=None)` — the CLI shell (dry-run). `local-<uuid>` agent_run_id, UTC now.
+
 ---
 
-## NEXT: Step 6 — `agent/triage.py`
+## Cluster session — the remaining live-Databricks tail
 
-**Goal:** turn a `Verdict` + `Registry` into the Phase-1 decision. Pure Python,
-fully unit-testable. This is the Q10 predicate from `PHASE1_PLAN.md`.
+Phase 1 logic is done and proven locally. What's left ALL needs a live workspace
+with the `fin_close` profile and a real failed run. In rough order:
 
-### Inputs
-- `verdict: Verdict` (from step 5)
-- `registry: Registry` (from step 4)
-- context passed through for the audit row: `scenario`, `generator_run_id`, `gl_table`.
+1. **Get a real failed run.** Reseed a `dq_gate` defect (e.g. unbalanced voucher)
+   so the gate task fails. This is the prerequisite for everything below.
+2. **⚠️ Re-validate the parser fixture.** Capture the real
+   `jobs.get_run_output(run_id)` and diff `.error` / `.error_trace` against
+   `tests/fixtures/failed_run_output.json`. If the real format differs, fix the
+   regex in `agent/verdict.py` (the whole reason it's quarantined). Update the
+   fixture from the real capture.
+3. **Wire live auth.** `agent/verdict._default_output_getter` — use the
+   `fin_close` profile from `config/system.yaml` instead of ambient SDK auth.
+   `pip install databricks-sdk` (already declared in requirements).
+4. **Implement `write_delta()` (step 7-write).** Fill in the stub: create
+   `fin_close.agent` if absent, build the DataFrame with the DDL in the
+   docstring, append to `triage_log`. Verify a row lands and reads back.
+5. **Notebook wrapper + `main` live branch (step 8).** A thin serverless notebook
+   that reads widgets (`generator_run_id`, `scenario`, `gl_table`, its own
+   `job_run_id`), calls `fetch_verdict(run_id)` → `triage` → `write_delta`.
+6. **Manual E2E (step 9).** Failed run → run the wrapper → confirm the correct
+   `triage_log` row (deterministic → route_to_agent).
+7. **`workflow/create_agent_job.py` (step 10).** The Agent's own job + a
+   table-update trigger on `fin_close.gold.remediation_log`; prove it fires
+   automatically. Manual-first, then automate.
 
-### The predicate (decided — do not re-litigate)
-Resolve each failing check through `registry.get(name)`, then:
-
-1. **`verdict.parsed is False`** (no parseable check)
-   ⇒ `failure_class = "transient"`, `triage_decision = "leave_to_existing_path"`.
-2. **parsed, and ≥1 failing check is a known `dq_gate` check with `fails_task=True`**
-   ⇒ `failure_class = "deterministic"`, `triage_decision = "route_to_agent"`.
-3. **parsed, but ≥1 failing check is unknown to the registry** (name not found)
-   ⇒ `failure_class = "unknown"`, `triage_decision = "escalate"`. Unrecognized
-   defect: surface to a human, don't silently drop. (An unknown check name means
-   the pipeline grew a check the registry hasn't catalogued yet.)
-4. **Edge — parsed, all checks known but none task-failing** (shouldn't occur via a
-   task failure today, since only `fails_task` checks raise): treat as `unknown` /
-   `escalate`. Note it; don't crash.
-
-> Order matters: check "unknown check present" as escalate BEFORE concluding
-> deterministic, OR decide the precedence explicitly and test it. Recommended
-> precedence: unknown-check-present ⇒ escalate wins over route_to_agent, so a
-> registry gap is never silently routed. Confirm this when building.
-
-### Output
-A `TriageResult` (frozen dataclass) carrying the fields the audit row needs
-(see the `triage_log` schema in `PHASE1_PLAN.md`):
-`failure_class`, `triage_decision`, `failed_checks` (sorted list), `gate_types`
-(from registry, per check), `signal_source`, `evidence` (from `verdict.evidence`).
-Plus the passed-through `scenario`, `generator_run_id`, `gl_table`.
-(`agent_run_id`, `detected_at` get stamped at write time in step 7.)
-
-### Tests to write
-- transient (parsed=False) ⇒ leave_to_existing_path
-- single known dq_gate check ⇒ deterministic ⇒ route_to_agent
-- unknown check name ⇒ unknown ⇒ escalate
-- mixed known + unknown ⇒ escalate (precedence)
-- reconciliation-only known check (edge 4) ⇒ escalate/unknown
-- gate_types resolved correctly from the registry
+Depends on the **Tier-A brace** from `collaboration.md` (run id on the
+`remediation_log` row) for exact run correlation; until then, "latest failed run"
+is the safe fallback (job is `max_concurrent_runs=1`).
 
 ---
 
@@ -128,10 +149,14 @@ Plus the passed-through `scenario`, `generator_run_id`, `gl_table`.
 - Deterministic defects → agent; transient → existing retry path. Never blur.
 - Every decision logged to the append-only `triage_log`.
 
-## Files added in steps 4–5 (to commit)
+## Files added in steps 4–8 (to commit)
 ```
-agent/__init__.py  agent/registry.py  agent/verdict.py
-tests/test_registry.py  tests/test_verdict.py  tests/fixtures/failed_run_output.json
+agent/__init__.py  agent/registry.py  agent/verdict.py  agent/triage.py
+agent/audit.py  agent/entrypoint.py
+tests/test_registry.py  tests/test_verdict.py  tests/test_triage.py
+tests/test_audit.py  tests/test_entrypoint.py
+tests/fixtures/failed_run_output.json
 conftest.py  requirements.txt  requirements-dev.txt
 docs/PHASE1_PROGRESS.md
 ```
+(`out/` is gitignored — the dry-run log is a local artifact, not committed.)
