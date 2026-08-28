@@ -1,0 +1,6 @@
+# Development dependencies — what YOU need to TEST/lint, but the Agent does not
+# need to run. Install locally with:  pip install -r requirements-dev.txt
+# (The `-r` line pulls in the runtime deps too, so this is the only install you need.)
+
+-r requirements.txt
+pytest>=8.0          # test runner (step 4 onward)

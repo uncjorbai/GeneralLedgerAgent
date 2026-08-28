@@ -1,0 +1,4 @@
+# Runtime dependencies — what the Agent needs to RUN.
+# Kept intentionally small; grows one line at a time as phases need it.
+
+pyyaml>=6.0          # parse config/*.yaml (the anomaly registry, system refs)
