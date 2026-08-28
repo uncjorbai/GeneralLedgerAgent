@@ -1,0 +1,6 @@
+{
+  "_comment": "SYNTHESIZED — NOT a real capture. Reconstructed from the exact exception format at GeneralLedgerGenerator/notebooks/dq_gate.py:205. Models the fields agent/verdict.py reads from databricks.sdk jobs.get_run_output(run_id): `error` and `error_trace`. RE-VALIDATE against a real failed run before Phase-1 end-to-end (see docs/PHASE1_PROGRESS.md).",
+  "run_id": 123456789,
+  "error": "DQ GATE FAILED — blocking Silver. Failing checks: ['debits_equal_credits']",
+  "error_trace": "Traceback (most recent call last):\n  File \"/Workspace/Repos/pipeline/dq_gate\", line 205, in <module>\n    raise Exception(f\"DQ GATE FAILED — blocking Silver. Failing checks: {sorted(dq_failed)}\")\nException: DQ GATE FAILED — blocking Silver. Failing checks: ['debits_equal_credits']\n"
+}

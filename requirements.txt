@@ -2,3 +2,6 @@
 # Kept intentionally small; grows one line at a time as phases need it.
 
 pyyaml>=6.0          # parse config/*.yaml (the anomaly registry, system refs)
+databricks-sdk>=0.20 # LIVE path only: read a failed run via the Jobs API.
+                     # Imported lazily in agent/verdict.py, so local unit tests
+                     # run without it installed.
