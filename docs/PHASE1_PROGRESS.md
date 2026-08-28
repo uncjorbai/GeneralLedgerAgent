@@ -53,7 +53,7 @@ live path imports it lazily, so local tests don't need it.
 
 ---
 
-## Module contracts (what step 6 builds on)
+## Module contracts (the built Phase-1 surface)
 
 ### `agent/registry.py`
 - `load_registry(path=None) -> Registry` — loads/validates `config/anomaly_registry.yaml`; raises `RegistryError` on any malformed file.
