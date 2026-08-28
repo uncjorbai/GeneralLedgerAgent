@@ -1,69 +1,57 @@
 # GL Anomaly Investigator
 
-A companion project to my [Financial Close pipeline](../GeneralLedgerGenerator).
-The pipeline generates realistic general-ledger data, deliberately breaks it in
-known ways, and runs a data-quality gate that catches the breaks. This project is
-what happens *after* the gate catches something: an agent that investigates the
-failure the way a close accountant would, works out what actually went wrong, and
-drafts a fix for a human to approve.
+This is my first dive into producing an Agentic solution for something outside of school. I'm leveraging my financial background to focus on developing a solution I could benefit from in my every day life. This is only possible through the assistance of Claude, so I'm excited to get into it and develop.
 
-## The idea, in one breath
+This thread should be updated and maintained as I progress through, so feel free to fork it and follow the documented setup to join along. 
 
-When a data pipeline fails, you retry it. That's the right move for a flaky
-network or a timed-out cluster — the failure is transient, and trying again
-clears it. It's the wrong move for *bad data*. An unbalanced journal entry fails
-the same way every time; retrying it just fails slower.
+## What I'm learning here
 
-So this project splits failures in two. Transient problems keep going to retries.
-Data problems — the deterministic kind, where the same defect trips the same
-check every run — go to the agent instead. That's the whole thesis: retries
-handle the infrastructure, the agent handles the data, and each stays in its lane.
+- Real world applications of LLMs
+- Tools/Tasks/Skills Development
+- End-to-end ownership
+- Governance in action
+- Human in the loop guardianship
 
-## Where to start reading
+## The problem I'm learning on
 
-If you're picking this up (future me included), read in roughly this order:
 
-- **[DESIGN.md](DESIGN.md)** — the full spec. Start here for the whole picture.
-- **[docs/PHASE1_PLAN.md](docs/PHASE1_PLAN.md)** — what I'm building right now,
-  and every decision I've locked in so far, with the reasoning behind each.
-- **[docs/PIPELINE_CONTRACT.md](docs/PIPELINE_CONTRACT.md)** — the seam between
-  this project and the pipeline: exactly what the agent reads from upstream, and
-  the one file it is never allowed to open (the answer key).
-- **[collaboration.md](collaboration.md)** — a note to the pipeline project
-  asking for one small addition. Hand this to whoever works on that side.
-- **[config/](config)** — the anomaly registry (the catalog of known defects)
-  and the pointers to the live system.
+With the complex nature of GAAP accounting it is almost prophetic to expect that errors are bound to reach production data. Despite our best efforts, guard rails are strict, defined boundaries that work nonstop to mitigate as many errors as possible. The evolving nature of modern business requires that IT and Accounting maintain a balance of anticipating errors as a result of new business processes and reacting to issues with new business processes. When errors escape the guard rails: business is impacted, teams lose momentum implementing a fix, and trust is lost. This project aims to accelerate our solutions so records are accurate and timely, and reconciliation requires as little intervention as possible. 
+
+This is a real world application supported with a production-ready General Ledger completely configurable to the needs of the simulation. 
+
+## The companion project
+
+
+**→ [GeneralLedgerGenerator](https://github.com/uncjorbai/GeneralLedgerGenerator)** - Databricks backed Medallion Architecture pipeline that loads configurable General Ledger data from a provided Chart of Accounts, Departments and Cost Centers. Built on a Free Serverless subscription, removing the complexity of spark management and easy maintenance and availability. 
+
+Configurations can be found on the companion repo. 
+
+## How to read this repo
+
+- **[DESIGN.md](DESIGN.md)** - Configuring now
+- **[docs/PHASE1_PLAN.md](docs/PHASE1_PLAN.md)** - Phase one plan before any code/implementation
+- **[docs/PIPELINE_CONTRACT.md](docs/PIPELINE_CONTRACT.md)** - contract with Agent regarding rules and responsibilities
+- **[config/](config)** - config.
 
 ## How it's coming together
 
-Built in phases, one at a time, trying not to run ahead:
 
-1. **Wiring** *(here now)* — get "gate fails → agent wakes → agent has the
-   context" working with no intelligence at all. De-risk the plumbing first.
-2. **Investigator** — give the agent tools and let it genuinely investigate one
-   scenario end to end, then generalize to the rest.
-3. **Drafter** — have it propose the specific correcting entry, staged for
-   approval.
-4. **Scorecard** — grade it against the answer keys across all seven defects.
-   This is the centerpiece.
-5. **Write-up.**
+1. **Wiring** _(here now)_ —
+2. **Investigator** —
+3. **Drafter** —
+4. **Scorecard** —
+5. **Write-up** —
 
 ## Rules I'm holding the agent to
 
-Not negotiable, and worth stating plainly up front:
+- Writes only to its own corner; never real Silver/Gold/serving tables.
+- A human approves every fix before it's applied.
+- Never sees the answer key while investigating.
+- Every step lands in an append-only trail.
+- Bounded steps; escalates instead of looping.
 
-- It **reads** widely but **writes** only to its own corner (`fin_close.agent`) —
-  never the real Silver, Gold, or serving tables.
-- A human approves every fix before it is applied.
-- It never sees the answer key while investigating; that's what it's graded on.
-- Every step it takes lands in an append-only trail. That log is a deliverable,
-  not an afterthought.
-- It works on a leash: bounded steps, and when it's stuck it escalates instead of
-  looping.
+## If you're using this to learn
 
-## A note on the pipeline
+Welcome aboard, I hope you find this as exciting as I do, and I wish you the best of luck. 
 
-The pipeline lives in its own project and I'm keeping it that way. This agent
-treats it as an outside system and leans only on the documented contract, never
-on its internals. When the agent needs something new from upstream, that's a
-deliberate ask (see `collaboration.md`), not a reach across the fence.
+I will be treating this like a living notebook, so stay tuned for updates. 
