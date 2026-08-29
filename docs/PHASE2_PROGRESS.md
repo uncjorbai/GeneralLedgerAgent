@@ -10,6 +10,44 @@ LLM run and the deferred live-Databricks tail remain (both by design)._
 
 ---
 
+## ▶ RESUME HERE (Monday handoff)
+
+**State:** Phase 2 offline-complete, committed and pushed to `main` (commit
+`cf1db56`, "Phase 2: the Investigator"). Working tree clean. `python -m pytest -q`
+→ 115 passing, no network, no key.
+
+**Environment facts a fresh session needs:**
+- The upstream Generator repo is on disk at `../GeneralLedgerGenerator` with real
+  parquet + answer keys in its `out/`. Phase 2 was built against it *offline*.
+- Fixtures under `tests/fixtures/gl/` are committed and self-contained; regenerate
+  with `python tests/fixtures/build_fixture.py` (reads the Generator; byte-stable).
+- `anthropic` and `databricks-sdk` are NOT installed (both lazy-imported, live-only).
+  Offline dev needs only `pip install -r requirements-dev.txt`.
+- No API key anywhere; `agent/llm.py` is fail-closed (no key ⇒ raises, never spends).
+
+**Pick up one of these (in rough priority):**
+1. **Phase 3 — remediation drafter.** The next phase (DESIGN §8, §6). Add a staged
+   `stage_remediation_proposal` writing to `fin_close.agent.*` staging ONLY (never
+   Silver/Gold). Per-defect correcting actions are in DESIGN §6. Diagnosis already
+   carries the offending records to drive it. Keep the one-defect-per-run scope.
+2. **Live LLM smoke run** (optional, spends API credits on YOUR key — deliberate).
+   `pip install anthropic`, set `ANTHROPIC_API_KEY`, then
+   `AnthropicModel.from_config()` → `investigate(...)` on a fixture provider. Lower
+   cost first by setting a cheaper `agent.llm.model` in `config/system.yaml`.
+   This is the first real test of whether the model diagnoses each defect *unaided*.
+3. **Live-Databricks tail** (cluster session). The concrete Tier-D live change:
+   read the `dq_gate` task's EXIT value on a *successful* run (recon variance),
+   not just failed-run output. Plus Phase-1's carried-forward write/E2E/job items.
+
+**Open design notes for whoever resumes:**
+- Triage now routes on `deterministic` (not `fails_task`) — Tier-D resolved in the
+  logic layer. `fails_task` is retained as metadata / the live trigger-source hint.
+- The Phase-2 scenario tests prove tool *sufficiency* + assembly, NOT that the live
+  model solves each unaided. That gap is closed by #2 above and the Phase-4 scorecard.
+- Nothing is owed to the Generator team: its data is sufficient for all 7 diagnoses.
+
+---
+
 ## Status at a glance
 
 | # | Step | State | Notes |
