@@ -1,0 +1,14 @@
+department,cost_center,cost_center_name
+SALES,CC100,Field Sales
+SALES,CC110,Sales Development
+SALES,CC120,Sales Ops
+MKT,CC200,Demand Gen
+MKT,CC210,Product Marketing
+ENG,CC300,Platform Engineering
+ENG,CC310,QA
+ENG,CC320,DevOps and Infrastructure
+CS,CC400,Onboarding
+CS,CC410,Support
+G&A,CC500,Finance
+G&A,CC510,People and HR
+G&A,CC520,IT

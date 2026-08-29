@@ -13,6 +13,7 @@ from agent.verdict import (
     fetch_verdict,
     parse_failed_checks,
     verdict_from_error,
+    verdict_from_exit,
 )
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "failed_run_output.json"
@@ -87,6 +88,64 @@ def test_verdict_reads_trace_when_error_is_empty():
     v = verdict_from_error(error=None, error_trace=trace)
     assert v.parsed is True
     assert v.failed_checks == frozenset({"account_in_coa"})
+
+
+# --------------------------------------------------------------------------- #
+# verdict_from_exit — the CLEAN structured source (Tier-D reconciliation path)
+# --------------------------------------------------------------------------- #
+
+# The shape the gate emits via dbutils.notebook.exit() on a run that did NOT raise
+# (dq passes, reconciliation varies) — the ONLY place the flagship variance lives.
+_EXIT = {
+    "scenario": "intercompany_out_of_balance",
+    "gl_table": "fin_close.bronze.gl_journal_lines__intercompany_out_of_balance",
+    "dq_passed": True,
+    "recon_passed": False,
+    "checks": [
+        {"check": "debits_equal_credits", "gate": "dq_gate", "failures": 0, "passed": True},
+        {"check": "no_duplicate_vouchers", "gate": "dq_gate", "failures": 0, "passed": True},
+        {"check": "intercompany_eliminates", "gate": "reconciliation", "failures": 2, "passed": False},
+    ],
+}
+
+
+def test_exit_recovers_reconciliation_variance():
+    v = verdict_from_exit(_EXIT)
+    assert v.parsed is True
+    assert v.failed_checks == frozenset({"intercompany_eliminates"})
+    assert "intercompany_eliminates" in v.evidence
+    assert "2 failures" in v.evidence
+
+
+def test_exit_accepts_json_string_as_notebook_exit_emits_it():
+    v = verdict_from_exit(json.dumps(_EXIT))
+    assert v.failed_checks == frozenset({"intercompany_eliminates"})
+
+
+def test_exit_all_passed_is_parsed_but_empty():
+    payload = {"checks": [{"check": "intercompany_eliminates", "gate": "reconciliation",
+                           "failures": 0, "passed": True}]}
+    v = verdict_from_exit(payload)
+    assert v.parsed is True                     # we DID recover a structured verdict
+    assert v.failed_checks == frozenset()       # it just had no failures
+
+
+def test_exit_missing_checks_is_not_parsed():
+    v = verdict_from_exit({"scenario": "x", "dq_passed": True})
+    assert v.parsed is False
+    assert v.failed_checks == frozenset()
+
+
+def test_exit_malformed_or_absent_payload_is_not_parsed():
+    assert verdict_from_exit("not json {").parsed is False
+    assert verdict_from_exit(None).parsed is False
+    assert verdict_from_exit(42).parsed is False
+
+
+def test_exit_missing_passed_flag_is_not_treated_as_a_failure():
+    # Defensive: absent 'passed' must not invent a failure out of missing data.
+    v = verdict_from_exit({"checks": [{"check": "intercompany_eliminates", "failures": 0}]})
+    assert v.failed_checks == frozenset()
 
 
 # --------------------------------------------------------------------------- #

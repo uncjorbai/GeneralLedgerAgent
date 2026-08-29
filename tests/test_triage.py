@@ -91,15 +91,38 @@ def test_mixed_known_and_unknown_escalates_precedence(registry):
 
 
 # --------------------------------------------------------------------------- #
-# 5) edge: known but NOT task-failing (reconciliation-only) -> escalate
+# 5) Tier-D resolved: a known reconciliation check now ROUTES.
+#    Its variance reaches us via the gate's structured exit (verdict_from_exit),
+#    not a task failure; triage routes on `deterministic`, not `fails_task`.
 # --------------------------------------------------------------------------- #
 
-def test_known_reconciliation_only_check_escalates(registry):
-    # intercompany_eliminates is known but fails_task=False (doesn't wake us today).
+def test_known_reconciliation_check_routes(registry):
+    # intercompany_eliminates is a deterministic defect (fails_task=False, but that
+    # no longer gates routing — the flagship must reach the Agent).
     r = triage(_verdict({"intercompany_eliminates"}), registry, **CTX)
+    assert r.failure_class == FAILURE_DETERMINISTIC
+    assert r.triage_decision == DECISION_ROUTE
+    assert r.gate_types == ("reconciliation",)
+
+
+# --------------------------------------------------------------------------- #
+# 6) edge: a known but NON-deterministic check -> escalate (branch 4).
+#    No such check exists in the real registry today, so build a tiny fake one.
+# --------------------------------------------------------------------------- #
+
+def test_known_nondeterministic_check_escalates():
+    from agent.registry import Check, Registry
+
+    fake = Registry(checks={
+        "flaky_probe": Check(
+            name="flaky_probe", gate="dq_gate", defect_class="flaky",
+            deterministic=False, fails_task=True,
+        )
+    })
+    r = triage(_verdict({"flaky_probe"}), fake, **CTX)
     assert r.failure_class == FAILURE_UNKNOWN
     assert r.triage_decision == DECISION_ESCALATE
-    assert r.gate_types == ("reconciliation",)         # resolved, just not routable
+    assert r.unknown_checks == ()          # it IS known, just not deterministic
 
 
 # --------------------------------------------------------------------------- #

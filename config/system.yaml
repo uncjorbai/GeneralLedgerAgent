@@ -15,6 +15,14 @@ agent:
   schema: agent
   triage_table: triage_log        # append-only audit trail (fin_close.agent.triage_log)
 
+  # Live-LLM settings (Phase 2, agent/llm.py). NON-SECRET only.
+  # There is NO API key here and there never will be — credentials are read from
+  # the environment (ANTHROPIC_API_KEY) / a Databricks secret. See llm.py.
+  llm:
+    provider: anthropic
+    model: claude-opus-5          # Anthropic flagship; swap for a cheaper/faster run
+    max_tokens: 8000
+
 signals:
   # Read-only. The row the Generator's `remediate` task appends on EVERY dq_gate
   # task failure. Its arrival is the Agent's activation trigger (Round-3 Q8).

@@ -2,6 +2,10 @@
 # Kept intentionally small; grows one line at a time as phases need it.
 
 pyyaml>=6.0          # parse config/*.yaml (the anomaly registry, system refs)
+pandas>=2.0          # GL data access in agent/provider.py + the tool layer
+pyarrow>=14.0        # read the Bronze/baseline parquet the provider serves
 databricks-sdk>=0.20 # LIVE path only: read a failed run via the Jobs API.
                      # Imported lazily in agent/verdict.py, so local unit tests
                      # run without it installed.
+anthropic>=0.40      # LIVE path only: the investigation LLM (agent/llm.py).
+                     # Imported lazily; offline tests need neither it nor a key.

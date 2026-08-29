@@ -1,0 +1,43 @@
+account_key,name,class,normal_balance,statement,department_required,active
+A10100,Cash - Operating,Asset,Debit,BS,FALSE,TRUE
+A10200,Cash - Payroll,Asset,Debit,BS,FALSE,TRUE
+A11000,Accounts Receivable,Asset,Debit,BS,FALSE,TRUE
+A11500,Allowance for Doubtful Accounts,Asset,Credit,BS,FALSE,TRUE
+A12000,Prepaid Expenses,Asset,Debit,BS,FALSE,TRUE
+A13000,Deferred Commissions,Asset,Debit,BS,FALSE,TRUE
+A14000,Intercompany Receivable,Asset,Debit,BS,FALSE,TRUE
+A15000,Property and Equipment,Asset,Debit,BS,FALSE,TRUE
+A15100,Accumulated Depreciation,Asset,Credit,BS,FALSE,TRUE
+A16000,Capitalized Software,Asset,Debit,BS,FALSE,TRUE
+L20100,Accounts Payable,Liability,Credit,BS,FALSE,TRUE
+L20500,Accrued Expenses,Liability,Credit,BS,FALSE,TRUE
+L21000,Accrued Payroll,Liability,Credit,BS,FALSE,TRUE
+L21500,Intercompany Payable,Liability,Credit,BS,FALSE,TRUE
+L22000,Deferred Revenue - Current,Liability,Credit,BS,FALSE,TRUE
+L22500,Deferred Revenue - Long Term,Liability,Credit,BS,FALSE,TRUE
+L23000,Income Tax Payable,Liability,Credit,BS,FALSE,TRUE
+L24000,Deferred Tax Liability,Liability,Credit,BS,FALSE,TRUE
+E30000,Common Stock,Equity,Credit,BS,FALSE,TRUE
+E31000,Additional Paid-in Capital,Equity,Credit,BS,FALSE,TRUE
+E32000,Retained Earnings,Equity,Credit,BS,FALSE,TRUE
+R40000,Subscription Revenue,Revenue,Credit,IS,TRUE,TRUE
+R41000,Professional Services Revenue,Revenue,Credit,IS,TRUE,TRUE
+R42000,Intercompany Management Fee,Revenue,Credit,IS,FALSE,TRUE
+R49000,Contra Revenue - Discounts,Revenue,Debit,IS,TRUE,TRUE
+C50000,Hosting and Infrastructure,Cost of Sales,Debit,IS,TRUE,TRUE
+C50500,Third Party Software,Cost of Sales,Debit,IS,TRUE,TRUE
+C51000,Customer Support,Cost of Sales,Debit,IS,TRUE,TRUE
+C52000,Professional Services Delivery,Cost of Sales,Debit,IS,TRUE,TRUE
+C53000,Amortization of Capitalized Software,Cost of Sales,Debit,IS,TRUE,TRUE
+X60000,Sales Salaries and Wages,Expense,Debit,IS,TRUE,TRUE
+X60500,Marketing Programs,Expense,Debit,IS,TRUE,TRUE
+X61000,Research and Development Salaries,Expense,Debit,IS,TRUE,TRUE
+X62000,General and Administrative Salaries,Expense,Debit,IS,TRUE,TRUE
+X63000,Rent and Facilities,Expense,Debit,IS,TRUE,TRUE
+X64000,Software and Subscriptions,Expense,Debit,IS,TRUE,TRUE
+X65000,Depreciation Expense,Expense,Debit,IS,TRUE,TRUE
+X66000,Professional Fees,Expense,Debit,IS,TRUE,TRUE
+X67000,Intercompany Management Fee,Expense,Debit,IS,FALSE,TRUE
+T70000,Interest Expense,Taxes and Interest,Debit,IS,FALSE,TRUE
+T71000,Interest Income,Taxes and Interest,Credit,IS,FALSE,TRUE
+T72000,Income Tax Expense,Taxes and Interest,Debit,IS,FALSE,TRUE

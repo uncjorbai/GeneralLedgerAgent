@@ -115,30 +115,37 @@ def triage(
             ),
         )
 
-    # 3) DETERMINISTIC -> route. A known defect that actually FAILED THE TASK.
-    #    We key on `fails_task` (not on gate) so a future reconciliation check that
-    #    is made task-failing (Tier D) routes correctly without editing this logic.
-    routable = [c for c in known if c.deterministic and c.fails_task]
+    # 3) DETERMINISTIC -> route. A known, deterministic data defect. We key on
+    #    `deterministic`, NOT `fails_task`: a check appears in `failed_checks` only
+    #    because a verdict source already observed it fail (the exception string for
+    #    a DQ-gate raise, OR the structured exit for a reconciliation variance —
+    #    verdict.py). So "is this a real failure" is settled upstream; triage asks
+    #    the orthogonal question "is it a deterministic defect the Agent handles?"
+    #    Routing on `deterministic` is what wakes the Agent for the Tier-D
+    #    reconciliation scenarios (intercompany, period_cutoff) without them ever
+    #    failing the task. `fails_task` stays as metadata / the trigger-source hint.
+    routable = [c for c in known if c.deterministic]
     if routable:
         return result(
             FAILURE_DETERMINISTIC,
             DECISION_ROUTE,
             gate_types=gate_types,
             rationale=(
-                f"Failing check(s) {list(failed)} are known deterministic defects "
-                "that fail the task; routing to the Agent."
+                f"Failing check(s) {list(failed)} are known deterministic data "
+                "defects; routing to the Agent."
             ),
         )
 
-    # 4) EDGE — parsed, all checks known, but none is task-failing. Shouldn't
-    #    happen today (only task-failing checks raise), so it's anomalous: escalate
-    #    rather than silently drop.
+    # 4) EDGE — parsed, all checks known, but none is deterministic (e.g. a future
+    #    flaky/non-deterministic check the registry marks `deterministic: false`).
+    #    Not the Agent's job and not a clean transient either: escalate rather than
+    #    silently drop.
     return result(
         FAILURE_UNKNOWN,
         DECISION_ESCALATE,
         gate_types=gate_types,
         rationale=(
-            f"Failing check(s) {list(failed)} are known but none fail the task "
-            "(e.g. reconciliation-only); unexpected, escalating for review."
+            f"Failing check(s) {list(failed)} are known but none is a deterministic "
+            "defect; unexpected, escalating for human review."
         ),
     )

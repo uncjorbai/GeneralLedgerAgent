@@ -1,18 +1,33 @@
-"""Recover the failing-check verdict from a failed pipeline run.
+"""Recover the failing-check verdict from a pipeline run.
 
-THIS IS THE ONE BRITTLE MODULE IN PHASE 1 — on purpose. The DQ gate destroys its
-structured verdict when it fails (it `raise`s before it can emit JSON — see
-GeneralLedgerGenerator/notebooks/dq_gate.py:205 vs :210), so the only durable
-signal left is the exception STRING:
+This module is the single place that turns *whatever the pipeline emits* into a
+clean `Verdict`. There are TWO recovery sources, because the gate leaves two very
+different traces depending on which suite tripped (see
+GeneralLedgerGenerator/notebooks/dq_gate.py):
 
-    DQ GATE FAILED — blocking Silver. Failing checks: ['debits_equal_credits']
+  1. **Brittle string parse — `verdict_from_error` (the failed-task path).**
+     A DQ-gate check `raise`s (dq_gate.py:205) *before* the gate can emit its
+     structured JSON, so the only durable signal is the exception STRING:
 
-Parsing that string is inherently fragile: it depends on a message format we do
-not control. So we quarantine ALL of that fragility here, behind a clean output
-(`Verdict`). When the gate's format changes, this module is the single place to
-fix — nothing downstream parses strings. (PIPELINE_CONTRACT.md points here.)
+         DQ GATE FAILED — blocking Silver. Failing checks: ['debits_equal_credits']
 
-Nothing in the pure parsing path imports the Databricks SDK; the live fetch does,
+     Parsing that is inherently fragile — a message format we do not control — so
+     ALL of that fragility is quarantined here behind `Verdict`.
+
+  2. **Clean structured parse — `verdict_from_exit` (the Tier-D / reconciliation
+     path).** A reconciliation check only *prints* a variance; the task does NOT
+     raise, so it reaches `dbutils.notebook.exit(json.dumps({... "checks":[...]}))`
+     (dq_gate.py:210) and emits a structured, per-check verdict. This is how the
+     flagship `intercompany_out_of_balance` — which passes the DQ gate and only
+     varies at reconciliation — is recovered. It is the clean counterpart to the
+     string parse and doubles as the Tier-B "durable structured verdict".
+
+Which source a caller uses is decided by the run's outcome: a task that FAILED →
+`verdict_from_error` on its error/trace; a task that SUCCEEDED but reported a
+reconciliation variance → `verdict_from_exit` on its exit value. Either way the
+downstream (`triage`) sees only a `Verdict`.
+
+Nothing in the pure parsing paths imports the Databricks SDK; the live fetch does,
 lazily, so the whole module is unit-testable on a laptop with no SDK and no
 network.
 """
@@ -20,6 +35,7 @@ network.
 from __future__ import annotations
 
 import ast
+import json
 import re
 from dataclasses import dataclass
 
@@ -98,6 +114,61 @@ def verdict_from_error(
         parsed=checks is not None,
         evidence=_evidence_snippet(text),
     )
+
+
+def _failing_from_checks(checks) -> tuple[frozenset[str], list[tuple[str, int]]]:
+    """From a gate `checks[]` list, return (failing-names, [(name, failures)]).
+
+    Each item is a `{check, gate, failures, passed}` dict. A check is failing when
+    `passed` is falsy. Missing `passed` is treated as passed (never invent a
+    failure from absent data). Items without a `check` name are ignored.
+    """
+    names: set[str] = set()
+    detail: list[tuple[str, int]] = []
+    for item in checks:
+        if not isinstance(item, dict) or "check" not in item:
+            continue
+        if not item.get("passed", True):
+            name = str(item["check"])
+            names.add(name)
+            detail.append((name, int(item.get("failures", 0) or 0)))
+    return frozenset(names), detail
+
+
+def verdict_from_exit(exit_value: dict | str | None) -> Verdict:
+    """Build a Verdict from the gate's structured `notebook.exit()` payload.
+
+    This is the CLEAN verdict source (contrast `verdict_from_error`, the brittle
+    string path). On a run that did NOT raise, the gate emits:
+
+        {"scenario","gl_table","dq_passed","recon_passed",
+         "checks":[{"check","gate","failures","passed"}, ...]}
+
+    A reconciliation variance (e.g. `intercompany_eliminates`) lives ONLY here and
+    in no exception, so this is how the flagship reaches triage (Tier-D).
+    `parsed=True` whenever a well-formed `checks[]` list is present; `failed_checks`
+    are those with `passed=False`. Absent/malformed payload → `parsed=False`
+    (nothing structured to act on), consistent with the transient reading.
+    """
+    if isinstance(exit_value, str):
+        try:
+            exit_value = json.loads(exit_value)
+        except (ValueError, TypeError):
+            return Verdict(failed_checks=frozenset(), parsed=False, evidence="")
+    if not isinstance(exit_value, dict):
+        return Verdict(failed_checks=frozenset(), parsed=False, evidence="")
+
+    checks = exit_value.get("checks")
+    if not isinstance(checks, list):
+        return Verdict(failed_checks=frozenset(), parsed=False, evidence="")
+
+    failed, detail = _failing_from_checks(checks)
+    if detail:
+        body = ", ".join(f"{name} ({n} failures)" for name, n in sorted(detail))
+        evidence = f"gate verdict (structured exit): {body}"[:_EVIDENCE_MAX]
+    else:
+        evidence = "gate verdict (structured exit): all checks passed"
+    return Verdict(failed_checks=failed, parsed=True, evidence=evidence)
 
 
 def fetch_verdict(run_id: int, output_getter=None) -> Verdict:
