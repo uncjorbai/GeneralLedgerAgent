@@ -34,6 +34,7 @@ def test_known_check_resolves_to_expected_entry():
         defect_class="unbalanced_voucher",
         deterministic=True,
         fails_task=True,
+        remediation="add_balancing_line",   # Phase-3 slug (optional field)
     )
 
 
@@ -142,6 +143,35 @@ def test_duplicate_defect_class_is_rejected(tmp_path):
     """)
     with pytest.raises(RegistryError, match="must be unique"):
         load_registry(p)
+
+
+def test_blank_remediation_is_rejected(tmp_path):
+    # remediation is OPTIONAL, but if present it must be a non-empty action slug.
+    p = _write(tmp_path, """
+        checks:
+          bad_check:
+            gate: dq_gate
+            defect_class: something
+            deterministic: true
+            fails_task: true
+            remediation: "   "       # present but blank
+    """)
+    with pytest.raises(RegistryError, match="remediation must be a non-empty string"):
+        load_registry(p)
+
+
+def test_remediation_is_optional_and_defaults_to_empty(tmp_path):
+    # An entry with no remediation loads fine; the field defaults to "".
+    p = _write(tmp_path, """
+        checks:
+          plain_check:
+            gate: dq_gate
+            defect_class: something
+            deterministic: true
+            fails_task: true
+    """)
+    reg = load_registry(p)
+    assert reg.get("plain_check").remediation == ""
 
 
 def test_empty_checks_is_rejected(tmp_path):

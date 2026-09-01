@@ -17,6 +17,11 @@
 #                 dq_gate checks raise -> task fails -> Agent is woken.
 #                 reconciliation checks only print -> task succeeds -> the Agent
 #                 is NOT woken yet. See DESIGN Tier-D / PIPELINE_CONTRACT.md.
+#   remediation   (Phase 3, optional) the correcting-action slug the drafter
+#                 dispatches on (DESIGN §6). All seven are DECLARED here so the
+#                 map is complete, but only `restore_intercompany_side` is
+#                 IMPLEMENTED this session; the other slugs raise a clear
+#                 "not yet implemented" until the generalization pass.
 
 checks:
   debits_equal_credits:
@@ -24,30 +29,35 @@ checks:
     defect_class: unbalanced_voucher
     deterministic: true
     fails_task: true
+    remediation: add_balancing_line
 
   no_duplicate_vouchers:
     gate: dq_gate
     defect_class: duplicate_voucher
     deterministic: true
     fails_task: true
+    remediation: remove_duplicate_line
 
   account_in_coa:
     gate: dq_gate
     defect_class: unmapped_account
     deterministic: true
     fails_task: true
+    remediation: map_account
 
   required_dimensions_present:
     gate: dq_gate
     defect_class: missing_department
     deterministic: true
     fails_task: true
+    remediation: populate_dimension
 
   entity_and_period_present:
     gate: dq_gate
     defect_class: missing_entity_or_period
     deterministic: true
     fails_task: true
+    remediation: populate_field
 
   # --- reconciliation checks: known, but NOT task-failing today (Phase 2 / Tier D) ---
   period_cutoff_correct:
@@ -55,9 +65,11 @@ checks:
     defect_class: period_cutoff
     deterministic: true
     fails_task: false
+    remediation: shift_period
 
   intercompany_eliminates:
     gate: reconciliation
     defect_class: intercompany_out_of_balance
     deterministic: true
     fails_task: false
+    remediation: restore_intercompany_side

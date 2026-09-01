@@ -30,8 +30,15 @@ _DEFAULT_REGISTRY_PATH = (
 # is a typo or an un-negotiated change we want to hear about immediately.
 _VALID_GATES = {"dq_gate", "reconciliation"}
 
-# Exactly these fields on every entry — no more (unknown = typo), no less.
+# Exactly these fields are REQUIRED on every entry — no less, and nothing outside
+# the required+optional union (an unrecognized key is a typo we want to hear about).
 _REQUIRED_FIELDS = {"gate", "defect_class", "deterministic", "fails_task"}
+# Optional fields, permitted but not mandated. `remediation` is the Phase-3
+# extension point (the correcting-action slug the drafter dispatches on). It is
+# optional-for-now so the Phase-2 registry and its validation tests stay valid;
+# the Phase-4 generalization pass can promote it to required once all 7 carry one.
+_OPTIONAL_FIELDS = {"remediation"}
+_KNOWN_FIELDS = _REQUIRED_FIELDS | _OPTIONAL_FIELDS
 
 
 class RegistryError(ValueError):
@@ -55,6 +62,7 @@ class Check:
     defect_class: str    # the named scenario this check catches
     deterministic: bool  # true for every data-defect check
     fails_task: bool     # does tripping this check fail the Databricks task today?
+    remediation: str = ""  # Phase-3 correcting-action slug ("" if not yet declared)
 
 
 @dataclass(frozen=True)
@@ -130,7 +138,7 @@ def load_registry(path: str | Path | None = None) -> Registry:
 
         present = set(fields)
         missing = _REQUIRED_FIELDS - present
-        unknown = present - _REQUIRED_FIELDS
+        unknown = present - _KNOWN_FIELDS
         if missing:
             errors.append(f"{name}: missing field(s): {sorted(missing)}.")
         if unknown:
@@ -148,6 +156,11 @@ def load_registry(path: str | Path | None = None) -> Registry:
             errors.append(f"{name}: deterministic must be true/false.")
         if not isinstance(fields["fails_task"], bool):
             errors.append(f"{name}: fails_task must be true/false.")
+        # remediation is optional; if present it must be a non-empty action slug.
+        if "remediation" in fields and (
+            not isinstance(fields["remediation"], str) or not fields["remediation"].strip()
+        ):
+            errors.append(f"{name}: remediation must be a non-empty string when present.")
 
         # defect_class must be unique (1:1 scenario<->check; see PHASE1_PLAN assumptions)
         dc = fields["defect_class"]
@@ -171,6 +184,7 @@ def load_registry(path: str | Path | None = None) -> Registry:
             defect_class=f["defect_class"],
             deterministic=f["deterministic"],
             fails_task=f["fails_task"],
+            remediation=f.get("remediation", ""),
         )
         for name, f in raw_checks.items()
     }
