@@ -1,0 +1,27 @@
+{
+  "scenario": "unbalanced_voucher",
+  "description": "Break the fundamental accounting equation on a few vouchers by inflating one credit leg so that debits != credits for that voucher.",
+  "expected_gate": "dq_gate",
+  "expected_check": "debits_equal_credits",
+  "defects_applied": [
+    {
+      "type": "unbalance_voucher",
+      "count": 3,
+      "vouchers": [
+        "USTX260600060",
+        "USTX260200079",
+        "USTX251200092"
+      ],
+      "amount_delta": 500.0
+    }
+  ],
+  "is_clean": false,
+  "row_count": 5102,
+  "voucher_count": 2546,
+  "total_debit": 57033128.34,
+  "total_credit": 57034628.34,
+  "debits_equal_credits": false,
+  "duplicate_line_count": 0,
+  "unmapped_account_line_count": 0,
+  "generated_at": "2026-08-26T14:36:14"
+}

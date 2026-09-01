@@ -70,6 +70,18 @@ def main() -> None:
 
     for name in ("chart_of_accounts.csv", "departments.csv"):
         (OUT / name).write_bytes((GEN / "config" / name).read_bytes())
+
+    # Answer keys — the scorer's ground truth (Phase 4). Committed under _qa/ so the
+    # scorecard is self-contained, and provably OUT OF REACH of the agent: the
+    # provider refuses any path containing "_qa"/"run_manifest" (guardrail #4). Copied
+    # verbatim; the scorer uses only expected_check + defects_applied (type/vouchers/
+    # amount_delta) — the aggregate counts describe the full run, not this slice.
+    for sc in SCENARIOS:
+        qa = OUT / sc / "_qa"
+        qa.mkdir(parents=True, exist_ok=True)
+        (qa / "run_manifest.json").write_bytes(
+            (GEN / "out" / sc / "_qa" / "run_manifest.json").read_bytes()
+        )
     print(f"V = {len(V)} vouchers (IC={len(ic)}, defect={len(defect_vouchers)}, sample={len(sample)})")
 
 

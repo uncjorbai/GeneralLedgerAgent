@@ -1,0 +1,27 @@
+{
+  "scenario": "period_cutoff",
+  "description": "Shift the accounting date of a few vouchers across the month boundary so they land in the wrong close period (classic cutoff error). The voucher still balances, so this is not a DQ-gate failure - it surfaces later as a reconciliation / period-completeness variance.",
+  "expected_gate": "reconciliation",
+  "expected_check": "period_cutoff_correct",
+  "defects_applied": [
+    {
+      "type": "period_cutoff",
+      "count": 3,
+      "vouchers": [
+        "USTX251100055",
+        "USTX260600021",
+        "USMI260600041"
+      ],
+      "shift_days": 5
+    }
+  ],
+  "is_clean": false,
+  "row_count": 5102,
+  "voucher_count": 2546,
+  "total_debit": 57033128.34,
+  "total_credit": 57033128.34,
+  "debits_equal_credits": true,
+  "duplicate_line_count": 0,
+  "unmapped_account_line_count": 0,
+  "generated_at": "2026-08-26T14:36:14"
+}

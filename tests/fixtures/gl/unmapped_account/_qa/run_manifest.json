@@ -1,0 +1,28 @@
+{
+  "scenario": "unmapped_account",
+  "description": "Post lines to an account key that does not exist in the chart of accounts, breaking referential integrity against the COA dimension.",
+  "expected_gate": "dq_gate",
+  "expected_check": "account_in_coa",
+  "defects_applied": [
+    {
+      "type": "unmapped_account",
+      "count": 4,
+      "bogus_account": "Z99999",
+      "vouchers": [
+        "USTX260300096",
+        "USTX260800053",
+        "USMI260200067",
+        "USMI260700088"
+      ]
+    }
+  ],
+  "is_clean": false,
+  "row_count": 5102,
+  "voucher_count": 2546,
+  "total_debit": 57033128.34,
+  "total_credit": 57033128.34,
+  "debits_equal_credits": true,
+  "duplicate_line_count": 0,
+  "unmapped_account_line_count": 4,
+  "generated_at": "2026-08-26T14:36:14"
+}

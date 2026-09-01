@@ -87,6 +87,20 @@ def test_answer_key_scenario_is_refused(poison):
         LocalGLProvider(FIXTURE_ROOT, poison)
 
 
+def test_committed_answer_key_is_present_but_unreachable_by_the_agent():
+    # Phase 4 commits the real answer keys under _qa/ for the SCORER. Prove that
+    # doing so did not open a door for the agent: the file exists on disk, the
+    # scorer's loader reads it, but the provider still refuses the guarded path.
+    from agent.answer_key import load_answer_key
+
+    manifest = FIXTURE_ROOT / SCENARIO / "_qa" / "run_manifest.json"
+    assert manifest.exists()                                   # physically present
+    assert load_answer_key(SCENARIO, fixture_root=FIXTURE_ROOT).expected_check  # scorer CAN read
+
+    with pytest.raises(AnswerKeyAccessError):                  # agent CANNOT
+        LocalGLProvider(FIXTURE_ROOT, f"{SCENARIO}/_qa")
+
+
 def test_provider_exposes_no_write_method(provider):
     for attr in ("write", "save", "write_delta", "stage", "update"):
         assert not hasattr(provider, attr)

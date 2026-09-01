@@ -1,0 +1,26 @@
+{
+  "scenario": "duplicate_voucher",
+  "description": "Double-post a few complete vouchers (same voucher id and lines appear twice), simulating an ingestion retry or a re-run that was not made idempotent.",
+  "expected_gate": "dq_gate",
+  "expected_check": "no_duplicate_vouchers",
+  "defects_applied": [
+    {
+      "type": "duplicate_voucher",
+      "count": 3,
+      "vouchers": [
+        "USMI260300030",
+        "USMI260200063",
+        "USMI251000008"
+      ]
+    }
+  ],
+  "is_clean": false,
+  "row_count": 5108,
+  "voucher_count": 2546,
+  "total_debit": 57079977.42,
+  "total_credit": 57079977.42,
+  "debits_equal_credits": true,
+  "duplicate_line_count": 6,
+  "unmapped_account_line_count": 0,
+  "generated_at": "2026-08-26T14:36:13"
+}

@@ -1,0 +1,115 @@
+{
+  "rows": [
+    {
+      "scenario": "unbalanced_voucher",
+      "expected_check": "debits_equal_credits",
+      "detected": true,
+      "diagnosis_correct": true,
+      "fix_valid": true,
+      "regate_pass": true,
+      "action_type": "restore_voucher_balance",
+      "dollar_impact": 1500.0,
+      "pre_failed": [
+        "debits_equal_credits"
+      ],
+      "post_failed": [],
+      "note": ""
+    },
+    {
+      "scenario": "duplicate_voucher",
+      "expected_check": "no_duplicate_vouchers",
+      "detected": true,
+      "diagnosis_correct": true,
+      "fix_valid": true,
+      "regate_pass": true,
+      "action_type": "remove_duplicate_line",
+      "dollar_impact": 46849.08,
+      "pre_failed": [
+        "no_duplicate_vouchers"
+      ],
+      "post_failed": [],
+      "note": ""
+    },
+    {
+      "scenario": "unmapped_account",
+      "expected_check": "account_in_coa",
+      "detected": true,
+      "diagnosis_correct": true,
+      "fix_valid": true,
+      "regate_pass": true,
+      "action_type": "map_account",
+      "dollar_impact": 0.0,
+      "pre_failed": [
+        "account_in_coa"
+      ],
+      "post_failed": [],
+      "note": ""
+    },
+    {
+      "scenario": "missing_department",
+      "expected_check": "required_dimensions_present",
+      "detected": true,
+      "diagnosis_correct": true,
+      "fix_valid": true,
+      "regate_pass": true,
+      "action_type": "populate_dimension",
+      "dollar_impact": 0.0,
+      "pre_failed": [
+        "required_dimensions_present"
+      ],
+      "post_failed": [],
+      "note": ""
+    },
+    {
+      "scenario": "missing_entity_or_period",
+      "expected_check": "entity_and_period_present",
+      "detected": true,
+      "diagnosis_correct": true,
+      "fix_valid": true,
+      "regate_pass": true,
+      "action_type": "populate_field",
+      "dollar_impact": 0.0,
+      "pre_failed": [
+        "entity_and_period_present"
+      ],
+      "post_failed": [],
+      "note": ""
+    },
+    {
+      "scenario": "period_cutoff",
+      "expected_check": "period_cutoff_correct",
+      "detected": true,
+      "diagnosis_correct": true,
+      "fix_valid": true,
+      "regate_pass": true,
+      "action_type": "shift_period",
+      "dollar_impact": 0.0,
+      "pre_failed": [
+        "period_cutoff_correct"
+      ],
+      "post_failed": [],
+      "note": ""
+    },
+    {
+      "scenario": "intercompany_out_of_balance",
+      "expected_check": "intercompany_eliminates",
+      "detected": true,
+      "diagnosis_correct": true,
+      "fix_valid": true,
+      "regate_pass": true,
+      "action_type": "restore_intercompany_side",
+      "dollar_impact": 3000.0,
+      "pre_failed": [
+        "intercompany_eliminates"
+      ],
+      "post_failed": [],
+      "note": ""
+    }
+  ],
+  "tally": {
+    "detected": 7,
+    "diagnosis_correct": 7,
+    "fix_valid": 7,
+    "regate_pass": 7
+  }
+}

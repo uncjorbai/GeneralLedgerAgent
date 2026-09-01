@@ -1,0 +1,27 @@
+{
+  "scenario": "intercompany_out_of_balance",
+  "description": "Break one side of an intercompany management-fee pair (drop or alter the counterparty entity's leg) so the intercompany receivable and payable no longer mirror. Each entity's own books still balance, so this passes the DQ gate and only fails at consolidation / elimination tie-out.",
+  "expected_gate": "reconciliation",
+  "expected_check": "intercompany_eliminates",
+  "defects_applied": [
+    {
+      "type": "intercompany_break",
+      "count": 2,
+      "mode": "alter_amount",
+      "vouchers": [
+        "USMI260700105",
+        "USMI260600105"
+      ],
+      "amount_delta": 1500.0
+    }
+  ],
+  "is_clean": false,
+  "row_count": 5102,
+  "voucher_count": 2546,
+  "total_debit": 57036128.34,
+  "total_credit": 57036128.34,
+  "debits_equal_credits": true,
+  "duplicate_line_count": 0,
+  "unmapped_account_line_count": 0,
+  "generated_at": "2026-08-26T14:36:13"
+}
