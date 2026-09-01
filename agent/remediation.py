@@ -18,14 +18,22 @@ shape every line of this module:
 How the correction is found WITHOUT the answer key: the clean baseline is a
 regenerated-from-seed read tool the Agent already has (DESIGN tech notes,
 `provider.clean_baseline()`) — NOT the answer key (`run_manifest.json`, which the
-provider refuses to resolve, guardrail #4). For the "an existing value was
-altered" defects, the honest, exact correction is simply "restore the changed
-lines to their baseline values." That is what `restore_intercompany_side` does.
+provider refuses to resolve, guardrail #4). The unifying insight: restoring an
+offending voucher to its seed baseline is, by construction, a valid fix for EVERY
+defect class — the gate passed on the baseline, so it passes on the restored data.
 
-Scope this session: `intercompany_out_of_balance` end-to-end (DESIGN §6 build
-order). The other six slugs are declared in the registry but raise
-`UnsupportedRemediation` until the generalization pass — one working path first
-(CLAUDE.md), not seven stubs.
+The seven defects need just two primitive operations, both a diff against baseline:
+  * RESTATE — a field on a matched line differs from baseline; set it back. Covers
+    six of seven (the altered amount, the wrong account, the blanked dimension, the
+    nulled entity/period, the mis-cut date, the altered intercompany side). They
+    differ only in WHICH column moved — which the diff discovers, not per-defect code.
+  * REMOVE  — the failing voucher has more copies of a line than baseline; drop the
+    extras. Covers `duplicate_voucher`.
+
+The registry's `remediation` slug is the human-facing action label; the engine that
+produces the corrections is shared. (`add`-a-line is a third primitive that no
+seeded fixture needs, so it is deliberately not implemented — a validator with no
+failing test is just a claim; we raise clearly if a baseline line is missing.)
 
 PURE/IMPURE split mirrors Phase-1 `audit.py`:
   * draft_proposal()  — pure: (Diagnosis, provider) -> RemediationProposal.
@@ -37,9 +45,8 @@ PURE/IMPURE split mirrors Phase-1 `audit.py`:
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 
@@ -54,10 +61,22 @@ STAGING_TABLE = "remediation_proposals"
 
 STATUS_PROPOSED = "proposed"  # staged, awaiting human approval; never auto-applied
 
-# The line-key that identifies one journal line across the failing/clean frames.
+OP_RESTATE = "restate"
+OP_REMOVE = "remove"
+
+# Full line identity (kept for the human-facing correction record). company_id can
+# be null (that IS the defect for missing_entity_or_period), so the DIFF matches on
+# _MATCH_KEY below, which never includes a column a defect can blank out.
 _LINE_KEY = ("company_id", "voucher", "line_number")
-# The two amount columns a correction can restate.
+_MATCH_KEY = ("voucher", "line_number")   # globally unique; null-safe join key
 _AMOUNT_COLS = ("amount_debit", "amount_credit")
+# Columns a RESTATE may correct — every column a seeded defect can alter. The diff
+# flags whichever actually moved off baseline, so no per-defect column knowledge is
+# needed. (line_number/voucher are identity, not correctable.)
+_CORRECTABLE = (
+    "company_id", "main_account", "amount_debit", "amount_credit",
+    "department", "cost_center", "period", "accounting_date",
+)
 
 
 class RemediationError(RuntimeError):
@@ -66,7 +85,7 @@ class RemediationError(RuntimeError):
 
 
 class UnsupportedRemediation(RemediationError):
-    """The defect's remediation slug is declared but not implemented this session.
+    """The defect's remediation slug is declared but not implemented.
 
     A clear, honest failure — the registry promises a correcting action the code
     does not yet provide — rather than a silent no-op or a wrong fix.
@@ -74,27 +93,54 @@ class UnsupportedRemediation(RemediationError):
 
 
 # --------------------------------------------------------------------------- #
+# value normalization — one dataframe cell -> a JSON-safe, comparable scalar
+# --------------------------------------------------------------------------- #
+def _norm(v):
+    """NaN/blank -> None; Timestamp -> 'YYYY-MM-DD'; numpy -> python; float -> 2dp.
+
+    The single definition of "equal to baseline" used by the diff, so a datetime and
+    a string date, or a NaN and a blank, compare the way an accountant means them to.
+    """
+    if v is None or (not isinstance(v, (list, dict)) and pd.isna(v)):
+        return None
+    if isinstance(v, pd.Timestamp):
+        return v.strftime("%Y-%m-%d")
+    if hasattr(v, "item"):
+        v = v.item()
+    if isinstance(v, float):
+        return round(v, 2)
+    if isinstance(v, str) and v.strip() == "":
+        return None
+    return v
+
+
+# --------------------------------------------------------------------------- #
 # the proposal objects (what a human reviews / the scorer later applies)
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
 class LineCorrection:
-    """One line-level restatement: set `field` on this line to `corrected_value`.
+    """One correcting operation on one journal line.
 
-    Reviewer-legible on purpose: it names the exact line, the field, what it is
-    now, and what it should be. `delta = corrected - current` is the signed change.
+    RESTATE names the field, its current value, and the baseline value to set.
+    REMOVE drops one copy of a duplicated line (field/values are None). Reviewer-
+    legible on purpose: it always names the exact voucher + line and what changes.
     """
 
-    company_id: str
+    op: str                          # "restate" | "remove"
     voucher: str
     line_number: int
     main_account: str
-    field: str            # "amount_debit" | "amount_credit"
-    current_value: float
-    corrected_value: float
+    company_id: str | None = None
+    field: str | None = None         # restate only
+    current_value: object = None     # restate only
+    corrected_value: object = None   # restate only
 
     @property
-    def delta(self) -> float:
-        return round(self.corrected_value - self.current_value, 2)
+    def delta(self):
+        """Signed numeric change for a restate of an amount column; else None."""
+        if isinstance(self.current_value, (int, float)) and isinstance(self.corrected_value, (int, float)):
+            return round(self.corrected_value - self.current_value, 2)
+        return None
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -116,7 +162,7 @@ class RemediationProposal:
     action_type: str                        # the remediation slug (registry)
     target_vouchers: tuple[str, ...]        # vouchers the correction touches
     corrections: tuple[LineCorrection, ...]
-    dollar_impact: float                    # total variance the fix restores
+    dollar_impact: float                    # dollar variance the defect introduced
     narrative: str                          # controller-ready summary
     status: str = STATUS_PROPOSED
 
@@ -141,8 +187,8 @@ def draft_proposal(diagnosis: Diagnosis, provider, *, registry: Registry | None 
     """Derive a staged RemediationProposal from a completed Diagnosis.
 
     Pure with respect to (diagnosis, provider): reads GL data through the provider,
-    writes nothing. Dispatches on the defect's `remediation` slug from the
-    registry; raises UnsupportedRemediation for slugs not implemented this session.
+    writes nothing. Dispatches on the defect's `remediation` slug from the registry;
+    raises UnsupportedRemediation for slugs with no drafter.
     """
     registry = registry or load_registry()
     check = registry.get(diagnosis.failed_check)
@@ -154,100 +200,186 @@ def draft_proposal(diagnosis: Diagnosis, provider, *, registry: Registry | None 
     drafter = _DRAFTERS.get(slug)
     if drafter is None:
         raise UnsupportedRemediation(
-            f"Remediation '{slug or '(none)'}' for defect '{diagnosis.defect_class}' is not "
-            "implemented yet (Phase 3 flagship = restore_intercompany_side only)."
+            f"Remediation '{slug or '(none)'}' for defect '{diagnosis.defect_class}' has no drafter."
         )
-    return drafter(diagnosis, provider, check.name)
+    return drafter(diagnosis, provider, slug, check.name)
 
 
-def _restore_from_baseline(diagnosis: Diagnosis, provider, check_name: str, action_type: str) -> RemediationProposal:
-    """Correct an 'existing value was altered' defect by restoring the offending
-    vouchers' lines to their clean-baseline amounts.
+def _offending(diagnosis: Diagnosis, provider):
+    """The offending vouchers + the failing/clean frames restricted to them.
 
-    The baseline is regenerated from the same seed, so the pre-defect value is
-    exact — the correction is a faithful restoration, not an estimate. Every
-    changed amount on an offending voucher becomes one LineCorrection.
+    Shared preamble for every drafter. Raises if the diagnosis named no vouchers,
+    or if none of them are present in the failing table.
     """
     vouchers = tuple(diagnosis.offending_vouchers)
     if not vouchers:
         raise RemediationError(
-            f"Diagnosis for '{diagnosis.scenario}' names no offending vouchers; nothing to restore."
+            f"Diagnosis for '{diagnosis.scenario}' names no offending vouchers; nothing to correct."
         )
-
     failing = provider.failing_table()
     clean = provider.clean_baseline()
-    baseline = clean.set_index(list(_LINE_KEY))
-
-    sub = failing[failing["voucher"].isin(vouchers)].sort_values(list(_LINE_KEY))
-    if sub.empty:
+    fsub = failing[failing["voucher"].isin(vouchers)]
+    if fsub.empty:
         raise RemediationError(
             f"None of the offending vouchers {vouchers} were found in the failing table."
         )
+    return vouchers, failing, clean, fsub
 
-    corrections: list[LineCorrection] = []
-    for _, row in sub.iterrows():
-        key = tuple(row[k] for k in _LINE_KEY)
-        if key not in baseline.index:
-            # A line with no baseline twin (e.g. a wholly injected line) is out of
-            # scope for a pure restore; surface it rather than guess.
-            raise RemediationError(
-                f"Line {key} on an offending voucher has no clean-baseline counterpart; "
-                "restore cannot be drafted safely."
-            )
-        base = baseline.loc[key]
-        for col in _AMOUNT_COLS:
-            cur = round(float(row[col]), 2)
-            target = round(float(base[col]), 2)
-            if cur != target:
-                corrections.append(
-                    LineCorrection(
-                        company_id=str(row["company_id"]),
-                        voucher=str(row["voucher"]),
-                        line_number=int(row["line_number"]),
-                        main_account=str(row["main_account"]),
-                        field=col,
-                        current_value=cur,
-                        corrected_value=target,
-                    )
-                )
 
-    # Per-voucher impact = how far the voucher's total debit moved off baseline.
-    # Because each voucher stays internally balanced, the credit-side figure is
-    # identical, so this neither privileges a side nor double-counts a move's two legs.
-    def _voucher_impact(v: str) -> float:
-        f_deb = float(failing.loc[failing["voucher"] == v, "amount_debit"].sum())
-        b_deb = float(clean.loc[clean["voucher"] == v, "amount_debit"].sum())
-        return round(abs(f_deb - b_deb), 2)
-
-    dollar_impact = round(sum(_voucher_impact(v) for v in vouchers), 2)
-
-    accounts = sorted({c.main_account for c in corrections})
-    narrative = (
-        f"Intercompany balance out by ${dollar_impact:,.2f} across {len(vouchers)} voucher(s) "
-        f"({', '.join(vouchers)}): the {', '.join(accounts)} line(s) were altered off their "
-        f"seed baseline. Proposed fix: restore the {len(corrections)} changed amount(s) to the "
-        f"clean-baseline values so the intercompany side eliminates. Staged for approval; not applied."
-    )
+def _proposal(diagnosis, action_type, check_name, vouchers, corrections, dollar_impact, narrative):
     return RemediationProposal(
         scenario=diagnosis.scenario,
         defect_class=diagnosis.defect_class,
         check=check_name,
         action_type=action_type,
-        target_vouchers=vouchers,
+        target_vouchers=tuple(vouchers),
         corrections=tuple(corrections),
-        dollar_impact=dollar_impact,
+        dollar_impact=round(float(dollar_impact), 2),
         narrative=narrative,
     )
 
 
-def _draft_restore_intercompany_side(diagnosis: Diagnosis, provider, check_name: str) -> RemediationProposal:
-    return _restore_from_baseline(diagnosis, provider, check_name, action_type="restore_intercompany_side")
+def _draft_restore(diagnosis: Diagnosis, provider, action_type: str, check_name: str) -> RemediationProposal:
+    """Restore offending vouchers to baseline by RESTATING every changed field.
+
+    Matches each failing line to its baseline twin (voucher+line_number) and emits a
+    RESTATE for any correctable column whose value moved. Works for all six non-
+    duplicate defects because the diff discovers the altered column itself.
+    """
+    vouchers, failing, clean, fsub = _offending(diagnosis, provider)
+    baseline = clean.set_index(list(_MATCH_KEY))
+
+    corrections: list[LineCorrection] = []
+    for _, row in fsub.sort_values(list(_MATCH_KEY)).iterrows():
+        key = (row["voucher"], int(row["line_number"]))
+        if key not in baseline.index:
+            # No baseline twin => this would need an ADD, which no seeded fixture
+            # exercises. Surface it rather than guess a line into existence.
+            raise RemediationError(
+                f"Line {key} on an offending voucher has no clean-baseline counterpart; "
+                "a restore cannot be drafted safely (add-a-line is not supported)."
+            )
+        base = baseline.loc[key]
+        for col in _CORRECTABLE:
+            if col not in row or col not in base:
+                continue
+            cur, target = _norm(row[col]), _norm(base[col])
+            if cur != target:
+                corrections.append(LineCorrection(
+                    op=OP_RESTATE,
+                    voucher=str(row["voucher"]),
+                    line_number=int(row["line_number"]),
+                    main_account=str(row["main_account"]),
+                    company_id=_norm(row["company_id"]),
+                    field=col,
+                    current_value=cur,
+                    corrected_value=target,
+                ))
+    if not corrections:
+        raise RemediationError(
+            f"No line on the offending vouchers differs from baseline for '{diagnosis.scenario}'."
+        )
+
+    dollar_impact = _restate_dollar_impact(vouchers, failing, clean)
+    narrative = _narrate(action_type, check_name, vouchers, corrections, dollar_impact)
+    return _proposal(diagnosis, action_type, check_name, vouchers, corrections, dollar_impact, narrative)
 
 
-# slug -> drafter. Only the flagship is wired this session; the rest raise via the
-# `draft_proposal` dispatch (UnsupportedRemediation) until the generalization pass.
+def _draft_remove_duplicate(diagnosis: Diagnosis, provider, action_type: str, check_name: str) -> RemediationProposal:
+    """Restore offending vouchers to baseline by REMOVING duplicated lines.
+
+    For each (voucher, line_number) the failing table holds more copies of than the
+    baseline, propose dropping the excess copies. The duplicated dollars are the
+    reported impact.
+    """
+    vouchers, failing, clean, fsub = _offending(diagnosis, provider)
+    base_counts = clean.groupby(list(_MATCH_KEY)).size()
+
+    corrections: list[LineCorrection] = []
+    for key, group in fsub.groupby(list(_MATCH_KEY), sort=True):
+        excess = len(group) - int(base_counts.get(key, 0))
+        if excess <= 0:
+            continue
+        row = group.iloc[0]
+        for _ in range(excess):
+            corrections.append(LineCorrection(
+                op=OP_REMOVE,
+                voucher=str(row["voucher"]),
+                line_number=int(row["line_number"]),
+                main_account=str(row["main_account"]),
+                company_id=_norm(row["company_id"]),
+            ))
+    if not corrections:
+        raise RemediationError(
+            f"No duplicated line found on the offending vouchers for '{diagnosis.scenario}'."
+        )
+
+    dollar_impact = sum(
+        abs(float(failing.loc[failing["voucher"] == v, "amount_debit"].sum())
+            - float(clean.loc[clean["voucher"] == v, "amount_debit"].sum()))
+        for v in vouchers
+    )
+    narrative = _narrate(action_type, check_name, vouchers, corrections, dollar_impact)
+    return _proposal(diagnosis, action_type, check_name, vouchers, corrections, dollar_impact, narrative)
+
+
+def _restate_dollar_impact(vouchers, failing, clean) -> float:
+    """Dollar variance a value-alteration defect introduced.
+
+    Per voucher, take the larger of the total debit move and the total credit move
+    off baseline. Because a voucher stays internally balanced under these defects,
+    the two are equal for a genuine amount change (so no double-count of a move's two
+    legs); for non-amount defects (account/dimension/date) both are 0 — correctly 0
+    dollars of variance. Summed across the offending vouchers.
+    """
+    total = 0.0
+    for v in vouchers:
+        f = failing[failing["voucher"] == v]
+        c = clean[clean["voucher"] == v]
+        d = abs(float(f["amount_debit"].sum()) - float(c["amount_debit"].sum()))
+        cr = abs(float(f["amount_credit"].sum()) - float(c["amount_credit"].sum()))
+        total += max(d, cr)
+    return round(total, 2)
+
+
+# --------------------------------------------------------------------------- #
+# narrative — one controller-ready sentence, tailored by action label
+# --------------------------------------------------------------------------- #
+_LEAD = {
+    "restore_voucher_balance": "The voucher's debits and credits are out of balance by ${imp:,.2f}",
+    "remove_duplicate_line": "A voucher was posted more than once, inflating totals by ${imp:,.2f}",
+    "map_account": "A line is posted to an account absent from the chart of accounts",
+    "populate_dimension": "A line is missing its required department dimension",
+    "populate_field": "A line is missing its required entity/period key",
+    "shift_period": "An entry is dated outside the close period it is booked to",
+    "restore_intercompany_side": "The intercompany side does not eliminate, out by ${imp:,.2f}",
+}
+
+
+def _narrate(action_type: str, check_name: str, vouchers, corrections, impact: float) -> str:
+    lead = _LEAD.get(action_type, "A data-quality defect was found").format(imp=impact)
+    vlist = ", ".join(vouchers)
+    if corrections and corrections[0].op == OP_REMOVE:
+        what = f"remove {len(corrections)} duplicate line(s)"
+    else:
+        cols = sorted({c.field for c in corrections if c.field})
+        what = f"restore {len(corrections)} value(s) ({', '.join(cols)})"
+    return (
+        f"{lead}, across {len(vouchers)} voucher(s) ({vlist}). Proposed fix "
+        f"({action_type}): {what}, matching the seed baseline so `{check_name}` passes. "
+        f"Staged for approval; not applied."
+    )
+
+
+# slug -> drafter. Six defects restore off-baseline fields; duplicate removes extras.
 _DRAFTERS = {
-    "restore_intercompany_side": _draft_restore_intercompany_side,
+    "restore_intercompany_side": _draft_restore,
+    "restore_voucher_balance": _draft_restore,
+    "map_account": _draft_restore,
+    "populate_dimension": _draft_restore,
+    "populate_field": _draft_restore,
+    "shift_period": _draft_restore,
+    "remove_duplicate_line": _draft_remove_duplicate,
 }
 
 

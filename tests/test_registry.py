@@ -34,7 +34,7 @@ def test_known_check_resolves_to_expected_entry():
         defect_class="unbalanced_voucher",
         deterministic=True,
         fails_task=True,
-        remediation="add_balancing_line",   # Phase-3 slug (optional field)
+        remediation="restore_voucher_balance",   # Phase-3 slug (optional field)
     )
 
 

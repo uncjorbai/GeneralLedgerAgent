@@ -29,7 +29,9 @@ checks:
     defect_class: unbalanced_voucher
     deterministic: true
     fails_task: true
-    remediation: add_balancing_line
+    # Restore the altered line to its seed baseline (which re-balances the voucher).
+    # More faithful than appending a plug line, which would leave the wrong amount.
+    remediation: restore_voucher_balance
 
   no_duplicate_vouchers:
     gate: dq_gate
